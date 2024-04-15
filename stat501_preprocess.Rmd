@@ -1,0 +1,264 @@
+---
+title: "STAT501 Consulting Pre-Processing"
+author: "Michael Kerr"
+date: "2023-08-17"
+output: pdf_document
+---
+
+# start_end_registrations
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+```{r}
+library(readxl)
+user_data <- read_excel("Stats Consulting Data.xlsx", sheet="user_data")
+start_end_registrations <- read_excel("Stats Consulting Data.xlsx", sheet="start_end_registrations")
+```
+
+This chunk of code converts the data to wide format and calculates the number of goals set for each individual.
+
+```{r}
+library(tidyr)
+library(tidyverse)
+
+wide_SER <- pivot_wider(start_end_registrations,
+            id_cols="citizenId",
+            names_from="type",
+            values_from = "valueCount")
+
+
+# To avoid counting goalsSet if it already exists
+wide_SER$goalsSet <- rowSums(!is.na(wide_SER[,!(names(wide_SER) %in% c("goalsSet"))]) )
+
+# This is to get their starting weight from when the program starts.
+wide_SER_weight_values <- pivot_wider(start_end_registrations,
+            id_cols="citizenId",
+            names_from="type",
+            values_from = "startValue")
+
+wide_SER_weight_values <- wide_SER_weight_values[,c("citizenId", "WEIGHT")]
+```
+
+# intervention_history
+
+```{r}
+library(readxl)
+intervention_history <- read_excel("Stats Consulting Data.xlsx", sheet="intervention_history")
+```
+
+```{r}
+cluster1 <- read.csv("cluster_1.csv")
+cluster2 <- read.csv("cluster_2.csv")
+cluster3 <- read.csv("cluster_3.csv")
+cluster4 <- read.csv("cluster_4.csv")
+cluster5 <- read.csv("cluster_5.csv")
+```
+
+```{r}
+felix_clusters2 <- rbind(cluster1, cluster2, cluster3, cluster4, cluster5)
+felix_clusters2
+```
+
+This chunk of code is to just get an idea of the response rates. I made a histogram of all the responses.
+
+```{r}
+library(lubridate)
+
+# Make data into wide format and remove the Id column
+wide_IH <- pivot_wider(intervention_history,
+            id_cols="citizenId",
+            names_from="interventionNumber",
+            values_from = "interventionDate")
+wide_IH <- wide_IH %>% remove_rownames %>% column_to_rownames(var="citizenId")
+
+# Convert each column to numeric (system seconds)
+for(column in 1:ncol(wide_IH)) {
+  wide_IH[,column] <- as.numeric(wide_IH[,column])
+}
+
+wide_IH
+
+# Calculate the time since the initial response then set initial response to 0
+wide_IH[,2:ncol(wide_IH)] <- (wide_IH[,2:ncol(wide_IH)] - wide_IH[,1])
+wide_IH[,1] <- 0
+
+wide_IH <- cbind(rownames(wide_IH), data.frame(wide_IH, row.names=NULL))
+wide_IH
+names(wide_IH)[1] <- "citizenId"
+
+wide_IH$citizenId <- as.integer(wide_IH$citizenId)
+
+felix_clusters2 %>% select(citizenId, cluster) %>% full_join(wide_IH, by="citizenId") -> wide_IH
+
+wide_IH %>% filter(cluster==0) %>% select(-citizenId, -cluster) %>% pivot_longer(cols=names(wide_IH)[-c(1,2)]) -> responses1
+
+wide_IH %>% filter(cluster==1) %>% select(-citizenId, -cluster) %>% pivot_longer(cols=names(wide_IH)[-c(1,2)]) -> responses2
+
+wide_IH %>% filter(cluster==2) %>% select(-citizenId, -cluster) %>% pivot_longer(cols=names(wide_IH)[-c(1,2)]) -> responses3
+
+wide_IH %>% filter(cluster==3) %>% select(-citizenId, -cluster) %>% pivot_longer(cols=names(wide_IH)[-c(1,2)]) -> responses4
+
+wide_IH %>% filter(cluster==4) %>% select(-citizenId, -cluster) %>% pivot_longer(cols=names(wide_IH)[-c(1,2)]) -> responses5
+
+responses1
+
+ggplot(data=responses1, aes(x=value/(60*60*24))) +
+  geom_density(alpha=.2, fill="dodgerblue") +
+  ggtitle("Density of interventions per day in cluster 1") +
+  xlab("Days in the program") + 
+  ylab(NULL) +
+  theme(legend.text = element_text(size=18),
+        axis.title.x = element_text(size=18),
+        axis.title.y = element_text(size=18))
+
+ggplot(data=responses2, aes(x=value/(60*60*24))) +
+  geom_density(alpha=.2, fill="dodgerblue") +
+  ggtitle("Density of interventions per day in cluster 2") +
+  xlab("Days in the program") + 
+  ylab(NULL) +
+  theme(legend.text = element_text(size=18),
+        axis.title.x = element_text(size=18),
+        axis.title.y = element_text(size=18))
+
+ggplot(data=responses3, aes(x=value/(60*60*24))) +
+  geom_density(alpha=.2, fill="dodgerblue") +
+  ggtitle("Density of interventions per day in cluster 3") +
+  xlab("Days in the program") + 
+  ylab(NULL) +
+  theme(legend.text = element_text(size=18),
+        axis.title.x = element_text(size=18),
+        axis.title.y = element_text(size=18))
+
+ggplot(data=responses4, aes(x=value/(60*60*24))) +
+  geom_density(alpha=.2, fill="dodgerblue") +
+  ggtitle("Density of interventions per day in cluster 4") +
+  xlab("Days in the program") + 
+  ylab(NULL) +
+  theme(legend.text = element_text(size=18),
+        axis.title.x = element_text(size=18),
+        axis.title.y = element_text(size=18))
+
+ggplot(data=responses5, aes(x=value/(60*60*24))) +
+  geom_density(alpha=.2, fill="dodgerblue") +
+  ggtitle("Density of interventions per day in cluster 5") +
+  xlab("Days in the program") + 
+  ylab(NULL) +
+  theme(legend.text = element_text(size=18),
+        axis.title.x = element_text(size=18),
+        axis.title.y = element_text(size=18))
+
+# Make a histogram of the responses since their inital response (without including the very first one)
+hist(as.numeric(as.matrix(wide_IH[,-1]))/(60*60*24), breaks=30, xlab="Time in days for each response")
+
+```
+
+# onboarding_medical_data
+
+```{r}
+library(readxl)
+onboarding_medical_data <- read_excel("Stats Consulting Data.xlsx", sheet="onboarding_medical_data")
+```
+
+```{r}
+library(tidyverse)
+
+# Include citizenId's with none-zeroes and only include ONBOARDED
+known_OMD <- onboarding_medical_data[onboarding_medical_data$citizenId != 0,]
+known_OMD <- known_OMD[known_OMD$status == "ONBOARDED",]
+
+# Convert to wide format. Only including the steps and their corresponding value.
+wide_OMD <- pivot_wider(known_OMD,
+            id_cols="citizenId",
+            names_from=c("stepName", "stepGroupName"),
+            values_from = "measureValue")
+```
+
+# Combining onboarding_medical_data, user_data and citizen_advisor_view
+
+```{r}
+library(readxl)
+onboarding_status <- read_excel("Stats Consulting Data.xlsx", sheet="onboarding_status")
+citizen_advisor_view <- read_excel("Stats Consulting Data.xlsx", sheet="citizen_advisor_view")
+```
+
+I have joined user_data, citizen_advisor_view, WIDE onboarding_medical_data,
+WIDE start_end_registrations (but only goalsSet) and weight_milestones (where I have only included the 
+BMI class which I have calculated).
+
+```{r}
+library(dplyr)
+joined_data <- user_data %>% full_join(citizen_advisor_view, by="citizenId") %>%
+  full_join(wide_OMD, by="citizenId") %>% full_join(wide_SER[,c("citizenId", "goalsSet")], by="citizenId") %>%
+  full_join(wide_SER_weight_values, by="citizenId")
+```
+
+```{r}
+# Exclude features that include text or have little to no data.
+features_to_remove <- c("isRejected", "gender", "citizenIllnessesText",
+                        "educationalLevel", "citizenCigarettes", "hasActiveAgreement",
+                        "closeDescription", "extractDate", "createdDate", "startDate",
+                        "lastActivity.x", "firstAdviceTime", "lastAdviceTime",
+                        "firstReceivedMessageTime", "lastReceivedMessageTime",
+                        "firstMessageTime", "lastMessageTime")
+
+# Convert strings to factors
+joined_data %>% select(-features_to_remove) %>% mutate_if(is.character, as.factor) -> selected_data
+
+# Convert date columns to date types
+selected_data$`Birth due date_Onboarding` <- as.Date(joined_data$`Birth due date_Onboarding`, format="%Y-%m-%d")
+selected_data$`Birth date_After Birth` <- as.Date(joined_data$`Birth date_After Birth`, format="%Y-%m-%d")
+```
+
+```{r}
+selected_data
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

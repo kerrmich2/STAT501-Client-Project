@@ -1,0 +1,127 @@
+---
+title: "survival"
+author: "Michael Kerr"
+date: "2023-09-28"
+output: pdf_document
+---
+
+```{r}
+data <- read.csv("full_data_clusters.csv")
+kmeans_no_target <- read.csv("k-means without target.csv")
+exit <- read.csv("censored.csv")
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+felix_clusters %>% count(Cluster)
+
+full_data <- read.csv("full_data.csv")
+felix_clusters <- read.csv("felix_clusters.csv")
+full_data %>% full_join(felix_clusters, by="citizenId") -> full_data_clusters
+exit %>% select(citizenId, exit) %>% full_join(full_data_clusters, by="citizenId") ->full_data_clusters_exit
+```
+
+```{r}
+rename_clusters <- function(x) {
+  if(is.na(x)){return(NA)}
+  if(x=="C0"){return(1)}
+  if(x=="C1"){return(2)}
+  if(x=="C2"){return(3)}
+  if(x=="C3"){return(4)}
+  if(x=="C4"){return(5)}
+  
+}
+
+full_data_clusters_exit$Cluster <- unlist(lapply(full_data_clusters_exit$Cluster, rename_clusters))
+```
+
+```{r}
+library(survival)
+library(survminer)
+library(ggfortify)
+library(gtsummary)
+surv_full_data_censor <- Surv(full_data_clusters_exit$daysOnProgram, full_data_clusters_exit$exit)
+surv.fit_clusters_censor <- survfit(surv_full_data_censor~Cluster, conf.int=0.95,data=full_data_clusters_exit)
+ggsurvplot(surv.fit_clusters_censor, data=full_data_clusters_exit, conf.int=T)
+```
+```{r}
+surv_full_data <- Surv(full_data_clusters_exit$daysOnProgram)
+surv.fit_clusters <- survfit(surv_full_data~Cluster, conf.int=0.95,data=full_data_clusters_exit)
+ggsurvplot(surv.fit_clusters, data=full_data_clusters_exit, conf.int=T)
+```
+
+```{r}
+full_data_clusters_exit %>% count(Cluster, exit)
+```
+
+
+```{r}
+full_data_clusters_exit %>% select(Cluster, exit)
+```
+
+```{r}
+library(dplyr)
+library(tidyverse)
+kmeans_no_target %>% full_join(exit, by="citizenId") %>%
+  select(-c(censor, closeDescription, closeReason.y)) ->
+  cluster_surv
+```
+
+This is a survival plot if we cluster and include daysInProgram and closeReason. I also have not included censored data because I haven't checked for it yet.
+
+```{r}
+library(survival)
+library(survminer)
+library(ggfortify)
+surv.time <- Surv(data$daysOnProgram)
+est.surv <- survfit(surv.time~Cluster, conf.int=0.95,data=data)
+```
+
+```{r}
+ggsurvplot(est.surv, data=data)
+```
+
+```{r}
+surv.time.no_target <- Surv(kmeans_no_target$daysOnProgram)
+est.surv <- survfit(surv.time.no_target~Cluster, conf.int=0.95,data=kmeans_no_target)
+ggsurvplot(est.surv, data=kmeans_no_target)
+```
+
+```{r}
+library(gtsummary)
+surv.time.exit <- Surv(cluster_surv$daysOnProgram, cluster_surv$exit)
+est.surv.exit <- survfit(surv.time.exit~Cluster, conf.int=0.95,data=cluster_surv)
+coxph(surv.time.exit~Cluster, data=cluster_surv) %>% tbl_regression(exp=T)
+ggsurvplot(est.surv.exit, data=cluster_surv, conf.int=T)
+summary(est.surv.exit)
+```
+
+```{r}
+survival_probability <- rep(NA, nrow(cluster_surv))
+
+for(instance in 1:length(cluster_surv$daysOnProgram)){
+  survival_day <- cluster_surv$daysOnProgram[instance]
+  
+  if(cluster_surv$Cluster[instance] == "C1") {
+    instance_cluster <- 1
+  }
+  
+  if(cluster_surv$Cluster[instance] == "C2") {
+    instance_cluster <- 2
+  }
+  
+  if(cluster_surv$Cluster[instance] == "C3") {
+    instance_cluster <- 3
+  }
+  
+  survival_probability[instance] <- summary(est.surv.exit, times=survival_day, extend=T)$surv[instance_cluster]
+}
+```
+
+```{r}
+cluster_surv %>% select(citizenId, Cluster, exit, daysOnProgram) %>% cbind(survival_probability) -> cluster_survival_probability
+write.csv(cluster_survival_probability, "citizen_survival_prob.csv", row.names = F)
+```
+
